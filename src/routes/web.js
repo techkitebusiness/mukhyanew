@@ -27,6 +27,9 @@ const initWebRouter = (app) => {
         return res.redirect('/home');
     });
     router.get('/home', homeController.homePage);
+    router.post('/wallet/paynow/wowpay', middlewareController, paymentController.initiateWowPayPayment);
+    router.post('/wallet/verify/wepay',  paymentController.verifyWowPayPayment);
+    router.get('/wallet/verify/wepay',  paymentController.verifyWowPayPayment);
 
     router.get('/checkIn', middlewareController, homeController.checkInPage);
     router.get('/activity', middlewareController, homeController.activityPage);

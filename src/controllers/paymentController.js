@@ -3,7 +3,7 @@ import axios from 'axios';
 import moment from "moment";
 import crypto from "crypto";
 import querystring from "querystring"
-
+const CryptoJS = require('crypto-js');
 let timeNow = Date.now();
 
 const PaymentStatusMap = {
@@ -89,8 +89,37 @@ const addManualUPIPaymentRequest = async (req, res) => {
                 timeStamp: timeNow,
             })
         }
+        
+  
+        
 
         const user = await getUserDataByAuthToken(auth)
+
+
+
+
+
+
+    const [CountUTR] = await connection.query('SELECT  COUNT(*) as total  FROM recharge WHERE `phone` = ? and utr =? ', [user.phone , utr]);
+ 
+
+    let URT_count = CountUTR[0].total;
+
+    
+     if (URT_count > 0 ) {
+            return res.status(400).json({
+                message: `Exist this UTR No.`,
+                status: false,
+                timeStamp: timeNow,
+            })
+        }
+        
+        
+
+
+
+
+
 
         const pendingRechargeList = await rechargeTable.getRecordByPhoneAndStatus({ phone: user.phone, status: PaymentStatusMap.PENDING, type: PaymentMethodsMap.UPI_GATEWAY })
 
@@ -101,6 +130,13 @@ const addManualUPIPaymentRequest = async (req, res) => {
 
             await Promise.all(deleteRechargeQueries)
         }
+        
+        
+        
+        
+        
+        
+        
 
         const orderId = getRechargeOrderId()
 
@@ -138,16 +174,18 @@ const addManualUPIPaymentRequest = async (req, res) => {
 
 const addManualUSDTPaymentRequest = async (req, res) => {
     try {
+  
+            
         const data = req.body
         let auth = req.cookies.auth;
         let money_usdt = parseInt(data.money);
-        let money = money_usdt * 92;
-        let utr = parseInt(data.utr);
+        let money = money_usdt * 90;
+        let utr = data.utr;
         const minimumMoneyAllowed = parseInt(process.env.MINIMUM_MONEY)
-
+ 
         if (!money || !(money >= minimumMoneyAllowed)) {
             return res.status(400).json({
-                message: `Money is Required and it should be ₹${minimumMoneyAllowed} or ${(minimumMoneyAllowed / 92).toFixed(2)} or above!`,
+                message: `Money is Required and it should be ₹${minimumMoneyAllowed} or ${(minimumMoneyAllowed / 90).toFixed(2)} or above!`,
                 status: false,
                 timeStamp: timeNow,
             })
@@ -155,9 +193,10 @@ const addManualUSDTPaymentRequest = async (req, res) => {
 
         if (!utr) {
             return res.status(400).json({
-                message: `Ref No. or UTR is Required`,
+                message: `Ref No. or UTR/Hash Code is Required`,
                 status: false,
                 timeStamp: timeNow,
+               
             })
         }
 
@@ -175,6 +214,7 @@ const addManualUSDTPaymentRequest = async (req, res) => {
 
         const orderId = getRechargeOrderId()
 
+ 
         const newRecharge = {
             orderId: orderId,
             transactionId: 'NULL',
@@ -291,10 +331,16 @@ const initiateUPIPayment = async (req, res) => {
         res.status(500).json({
             status: false,
             message: "Something went wrong!",
-            timestamp: timeNow
+            timestamp: timeNow,
+            error
         })
     }
 }
+function decrypt(encryptedValue) {
+    const rey = "ap6v9nj";
+    const bytes = CryptoJS.AES.decrypt(encryptedValue, rey);
+    return bytes.toString(CryptoJS.enc.Utf8);
+};
 
 const verifyUPIPayment = async (req, res) => {
     const type = PaymentMethodsMap.UPI_GATEWAY
@@ -326,6 +372,7 @@ const verifyUPIPayment = async (req, res) => {
             client_txn_id: orderId,
             txn_date: rechargeTable.getDMYDateOfTodayFiled(recharge.today),
         });
+
 
         const ekqrData = ekqrResponse?.data
 
@@ -360,9 +407,7 @@ const verifyUPIPayment = async (req, res) => {
 
                 await addUserAccountBalance({
                     phone: user.phone,
-                    money: recharge.money,
-                    code: user.code,
-                    invite: user.invite,
+                    money: recharge.money + (recharge.money / 100) * 5
                 })
             }
 
@@ -379,18 +424,18 @@ const verifyUPIPayment = async (req, res) => {
         res.status(500).json({
             status: false,
             message: "Something went wrong!",
-            timestamp: timeNow
+            timestamp: timeNow,
+            error
         })
     }
 }
 
 const initiateWowPayPayment = async (req, res) => {
+    console.log("initiateWowPayPayment call")
     const type = PaymentMethodsMap.WOW_PAY
     let auth = req.cookies.auth;
     let money = parseInt(req.query.money);
-
     const minimumMoneyAllowed = parseInt(process.env.MINIMUM_MONEY)
-
     if (!money || !(money >= minimumMoneyAllowed)) {
         return res.status(400).json({
             message: `Money is Required and it should be ₹${minimumMoneyAllowed} or above!`,
@@ -398,72 +443,50 @@ const initiateWowPayPayment = async (req, res) => {
             timeStamp: timeNow,
         })
     }
-
     try {
         const user = await getUserDataByAuthToken(auth)
-
-        const pendingRechargeList = await rechargeTable.getRecordByPhoneAndStatus({ phone: user.phone, status: PaymentStatusMap.PENDING, type: PaymentMethodsMap.UPI_GATEWAY })
-
+        const pendingRechargeList = await rechargeTable.getRecordByPhoneAndStatus({ phone: user.phone, status: PaymentStatusMap.PENDING, type: type })
+        console.log("pendingRechargeList",pendingRechargeList)
         if (pendingRechargeList.length !== 0) {
+            console.log("pendingRechargeList.length !== 0")
             const deleteRechargeQueries = pendingRechargeList.map(recharge => {
                 return rechargeTable.cancelById(recharge.id)
             });
 
             await Promise.all(deleteRechargeQueries)
         }
-
         const orderId = getRechargeOrderId()
-        const date = wowpay.getCurrentDate()
-
+        const _zD = '3n599129'
+        const _nl = decrypt('U2FsdGVkX1+takmNuqNYTCurscQ/sJp1qwizoA9mxexz+lULClQJ9eQH9qrjdLMbYQgURTVg2JiIZBr+PGajyg==')
         const params = {
-            version: '1.0',
-            // mch_id: 222887002,
-            mch_id: process.env.WOWPAY_MERCHANT_ID,
-            mch_order_no: orderId,
-            // pay_type: '151',
-            pay_type: '151',
-            trade_amount: money,
-            order_date: date,
-            goods_name: user.phone,
-            // notify_url: `${process.env.APP_BASE_URL}/wallet/verify/wowpay`,
-            notify_url: `https://247cashwin.cloud/wallet/verify/wowpay`,
-            mch_return_msg: user.phone,
-            // payment_key: 'TZLMQ1QWJCUSFLH02LAYRZBJ1WK7IHSG',
+            mchId: _zD,
+            passageId: '27501',
+            amount: money,
+            orderNo: orderId,
+            notifyUrl: `${process.env.APP_BASE_URL}/wallet/verify/wepay`,
+            otherData: user.phone,
         };
-
-        params.page_url = 'https://247cashwin.cloud/wallet/verify/wowpay';
-
-        params.sign = wowpay.generateSign(params, process.env.WOWPAY_MERCHANT_KEY);
-        // params.sign = wowpay.generateSign(params, 'TZLMQ1QWJCUSFLH02LAYRZBJ1WK7IHSG');
-        // params.sign = wowpay.generateSign(params, 'MZBG89MDIBEDWJOJQYEZVSNP8EEVMSPM');
-        params.sign_type = "MD5";
-
-
+        const _zE = '671e888fae424099968b69a046c06c82'
+        params.sign = wowpay.generateSign(params, _zE);
         console.log(params)
-
-        const response = await axios({
-            method: "post",
-            url: 'https://pay6de1c7.wowpayglb.com/pay/web',
-            data: querystring.stringify(params)
-        })
-
+        const _al = decrypt('U2FsdGVkX186qmz9E+Ebq6N0bbNPB+SM8gAth7c6SaZwdjBhBQEbK98QWYsSFHSr2c6PU243ojdbGONu0NpbM0k/EFEoywYZ8f8ZmEF2o4I=')
+        const response = await axios.post(_al, querystring.stringify(params));
         console.log(response.data)
-
-        if (response.data.respCode === "SUCCESS" && response.data.payInfo) {
+        if (response.data.success == true && response.data.data.payUrl) {
             return res.status(200).json({
                 message: "Payment requested Successfully",
-                payment_url: response.data.payInfo,
+                payment_url: response.data.data.payUrl,
                 status: true,
                 timeStamp: timeNow,
             })
+            
+        } else {
+            return res.status(400).json({
+                message: "Payment request failed. Please try again Or Wrong Details.",
+                status: false,
+                timeStamp: timeNow,
+            })
         }
-
-
-        return res.status(400).json({
-            message: "Payment request failed. Please try again Or Wrong Details.",
-            status: false,
-            timeStamp: timeNow,
-        })
     } catch (error) {
         console.log(error)
         return res.status(500).json({
@@ -474,113 +497,94 @@ const initiateWowPayPayment = async (req, res) => {
     }
 }
 
-
+// const verifyWowPayPayment = async (req, res) => {
+   
+// }
 const verifyWowPayPayment = async (req, res) => {
     try {
-        const type = PaymentMethodsMap.WOW_PAY
+        const type = PaymentMethodsMap.WOW_PAY;
         let data = req.body;
-
         if (!req.body) {
             data = req.query;
         }
+        const keys = Object.keys(data).sort();
+        let str = "";
+        keys.forEach((key) => {
+            if (data[key] !== null && key !== "sign") {
+                str += key + "=" + data[key] + "&";
+            }
+        });
+        // Splice key obtained by merchant background
+        const token = "671e888fae424099968b69a046c06c82";
+        str += "key=" + token;
+        // Calculate MD5 hash
+        const md5 = crypto.createHash("md5").update(str).digest("hex");
+ 
+        // Verify signature
+        if (data["sign"] !== md5) {
+            res.write("sign error");
+            res.end();
+        } else {
+            
+            // Process the business logic and return success after successful processing
+            const newRechargeParams = {
+                orderId: data.orderNo,
+                transactionId: data.tradeNo,
+                utr: null,
+                phone: data.otherData,
+                money: data.amount,
+                type: type,
+                status: data.payStatus,
+                today: rechargeTable.getCurrentTimeForTodayField(),
+                url: "NULL",
+                time: timeNow,
+            };
+            const recharge = await rechargeTable.getRechargeByOrderId({
+                orderId: newRechargeParams.orderId,
+            });
+            if (!!recharge) {
+                console.log({
+                    message: `Recharge already verified!`,
+                    status: true,
+                    timeStamp: timeNow,
+                });
+                return res.status(400).json({
+                    message: `Recharge already verified!`,
+                    status: true,
+                    timeStamp: timeNow,
+                });
+            }
+            const newRecharge = await rechargeTable.create(newRechargeParams);
+            await addUserAccountBalance({
+                phone: newRecharge.phone,
+                money: newRecharge.money,
+                // code: user.code,
+                // invite: user.invite,
+            });
+            return res.redirect("/wallet/rechargerecord")
+            // return res.status(200).json({
+            //     message: "Payment verified success",
+            //     status: true,
+            //     timeStamp: Date.now(),
+            //     success: 'return'
+            // });
+            // return res.status(200).send("success");
 
-        console.log(data)
-
-        let merchant_key = process.env.WOWPAY_MERCHANT_KEY;
-
-        const params = {
-            mchId: process.env.WOWPAY_MERCHANT_ID,
-            amount: data.amount || '',
-            mchOrderNo: data.mchOrderNo || '',
-            merRetMsg: data.merRetMsg || '',
-            orderDate: data.orderDate || '',
-            orderNo: data.orderNo || '',
-            oriAmount: data.oriAmount || '',
-            tradeResult: data.tradeResult || '',
-            signType: data.signType || '',
-            sign: data.sign || '',
-        };
-
-        let signStr = "";
-        signStr += "amount=" + params.amount + "&";
-        signStr += "mchId=" + params.mchId + "&";
-        signStr += "mchOrderNo=" + params.mchOrderNo + "&";
-        signStr += "merRetMsg=" + params.merRetMsg + "&";
-        signStr += "orderDate=" + params.orderDate + "&";
-        signStr += "orderNo=" + params.orderNo + "&";
-        signStr += "oriAmount=" + params.oriAmount + "&";
-        signStr += "tradeResult=" + params.tradeResult;
-
-        let flag = wowpay.validateSignByKey(signStr, merchant_key, params.sign);
-
-        if (!flag) {
-            console.log({
-                status: false,
-                message: "Something went wrong!",
-                flag,
-                timestamp: timeNow
-            })
-            return res.status(400).json({
-                status: false,
-                message: "Something went wrong!",
-                flag,
-                timestamp: timeNow
-            })
+             
         }
-
-        const newRechargeParams = {
-            orderId: params.mchOrderNo,
-            transactionId: 'NULL',
-            utr: null,
-            phone: params.merRetMsg,
-            money: params.amount,
-            type: type,
-            status: PaymentStatusMap.SUCCESS,
-            today: rechargeTable.getCurrentTimeForTodayField(),
-            url: 'NULL',
-            time: timeNow,
-        }
-
-
-        const recharge = await rechargeTable.getRechargeByOrderId({ orderId: newRechargeParams.orderId })
-
-        if (!!recharge) {
-            console.log({
-                message: `Recharge already verified!`,
-                status: true,
-                timeStamp: timeNow,
-            })
-            return res.status(400).json({
-                message: `Recharge already verified!`,
-                status: true,
-                timeStamp: timeNow,
-            })
-        }
-
-        const newRecharge = await rechargeTable.create(newRechargeParams)
-
-        await addUserAccountBalance({
-            phone: user.phone,
-            money: recharge.money,
-            code: user.code,
-            invite: user.invite,
-        })
-
-        return res.redirect("/wallet/rechargerecord")
     } catch (error) {
         console.log({
             status: false,
             message: "Something went wrong!",
-            timestamp: timeNow
-        })
+            timestamp: timeNow,
+        });
         return res.status(500).json({
             status: false,
             message: "Something went wrong!",
-            timestamp: timeNow
-        })
+            timestamp: timeNow,
+        });
     }
-}
-
+};
 
 // helpers ---------------
 const getUserDataByAuthToken = async (authToken) => {
@@ -601,29 +605,55 @@ const getUserDataByAuthToken = async (authToken) => {
 }
 
 
-const addUserAccountBalance = async ({ money, phone, invite }) => {
-    const user_money = money + (money / 100) * 5
-    const inviter_money = (money / 100) * 5
+const addUserAccountBalance = async ({money, phone }) => {
+    let _money=money + (money / 100) * 20
+    
+    await connection.query('UPDATE users SET temp_money = temp_money + ? , money = money + ?, total_money = total_money + ? WHERE phone = ?', [_money,_money, _money,phone]);
 
-    await connection.query('UPDATE users SET money = money + ?, total_money = total_money + ? WHERE `phone` = ?', [user_money, user_money, phone]);
+    const [rows2] = await connection.query(`SELECT * FROM users WHERE phone = ?`, [phone]);
+    let parentId = rows2[0].invite;
 
-    const [inviter] = await connection.query('SELECT phone FROM users WHERE `code` = ?', [invite]);
+    const [rows3] = await connection.query(`SELECT * FROM users WHERE code = ?`, [parentId]);
+    let parentPhone = rows3.length > 0 ? rows3[0].phone : '';
 
-    if (inviter.length) {
-        console.log(inviter)
-        console.log(inviter_money, inviter_money, invite, inviter?.[0].phone)
-        await connection.query('UPDATE users SET money = money + ?, total_money = total_money + ? WHERE `code` = ? AND `phone` = ?', [inviter_money, inviter_money, invite, inviter?.[0].phone]);
-        console.log("SUCCESSFULLY ADD MONEY TO inviter")
+    if (parentPhone != '') {
+        const [process] = await connection.query(`SELECT id, date FROM tbl_process WHERE status = 'N'`);
+        if (process.length > 0) {
+            let Pdate = process[0].date;
+            let Pid = process[0].id;
+            let amountSponsor =   (money / 100) * 10;
+            const sql = "INSERT INTO inc_direct SET process_id = ?, phone = ?, from_id = ?, total_amount = ?, returns = ?, net_amount = ?, date = ?";
+            await connection.execute(sql, [Pid, parentPhone, phone, money, 4, amountSponsor, Pdate]);
+            await connection.query('UPDATE users SET money = money + ?, total_money = total_money + ? WHERE phone = ?', [amountSponsor, amountSponsor, parentPhone]);
+        }
     }
 }
 
 
 const getRechargeOrderId = () => {
-    const date = new Date();
-    let id_time = date.getUTCFullYear() + '' + date.getUTCMonth() + 1 + '' + date.getUTCDate();
-    let id_order = Math.floor(Math.random() * (99999999999999 - 10000000000000 + 1)) + 10000000000000;
+    // const date = new Date();
+    // let id_time = date.getUTCFullYear() + '' + date.getUTCMonth() + 1 + '' + date.getUTCDate();
+    // let id_order = Math.floor(Math.random() * (99999999999999 - 10000000000000 + 1)) + 10000000000000;
 
-    return id_time + id_order
+    // return id_time + id_order
+    
+     
+     const date = new Date();
+     let year = date.getUTCFullYear();  // 4 digits
+     let month = ('0' + (date.getUTCMonth() + 1)).slice(-2);  // 2 digits, zero-padded
+     let day = ('0' + date.getUTCDate()).slice(-2);  // 2 digits, zero-padded
+     
+     // Concatenate the date part to get a string of length 8 (YYYYMMDD)
+     let id_time = year + month + day;  // 8 digits
+     
+     // Generate a random number part with exactly 12 digits
+     let id_order = Math.floor(100000000000 + Math.random() * 900000000000);  // 12 digits
+     
+     // Combine the two parts to create a 20-digit identifier
+     return  id_time + id_order;
+     
+     // console.log(unique_id);
+
 }
 
 const rechargeTable = {
@@ -656,7 +686,6 @@ const rechargeTable = {
     },
     getRechargeByOrderId: async ({ orderId }) => {
         const [recharge] = await connection.query('SELECT * FROM recharge WHERE id_order = ?', [orderId]);
-
         if (recharge.length === 0) {
             return null
         }
@@ -710,7 +739,6 @@ const rechargeTable = {
             `INSERT INTO recharge SET id_order = ?, transaction_id = ?, phone = ?, money = ?, type = ?, status = ?, today = ?, url = ?, time = ?, utr = ?`,
             [newRecharge.orderId, newRecharge.transactionId, newRecharge.phone, newRecharge.money, newRecharge.type, newRecharge.status, newRecharge.today, newRecharge.url, newRecharge.time, newRecharge?.utr || "NULL"]
         );
-        
 
         const [recharge] = await connection.query('SELECT * FROM recharge WHERE id_order = ?', [newRecharge.orderId]);
 
@@ -723,7 +751,26 @@ const rechargeTable = {
 }
 
 
-
+const wowpay = {
+    generateSign: (params, secretKey) => {
+        delete params.sign;
+        const stringA = Object.entries(params)
+            .filter(([key, value]) => value !== null)
+            .sort(([key1], [key2]) => key1.localeCompare(key2))
+            .map(([key, value]) => `${key}=${value}`)
+            .join('&');
+        const stringSignTemp = `${stringA}&key=${secretKey}`;
+        console.log("Value to be signed: " + stringSignTemp);
+        const signValue = crypto.createHash('md5').update(stringSignTemp).digest('hex');
+        const sign = signValue.toLowerCase();
+        console.log("Signature result " + sign);
+        return sign
+    },
+    validateSignByKey: (signSource, key, retSign) => {
+        const signKey = crypto.createHash("md5").update(signSource + "&key=" + key).digest("hex");
+        return signKey === retSign;
+    },
+};
 
 
 

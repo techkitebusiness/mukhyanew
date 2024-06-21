@@ -100,10 +100,37 @@ const rechargerecordPage = async (req, res) => {
     return res.render("wallet/rechargerecord.ejs");
 }
 
+// const withdrawalPage = async (req, res) => {
+//     return res.render("wallet/withdrawal.ejs");
+// }
 const withdrawalPage = async (req, res) => {
-    return res.render("wallet/withdrawal.ejs");
-}
+    // Data to be passed to the template
+    let auth = req.cookies.auth;
+    const [user] = await connection.query('SELECT `phone`, `code`,`invite`, `money` FROM users WHERE `token` = ?', [auth]);
+    let userInfo = user[0];
+    const [recharge] = await connection.query('SELECT * FROM recharge WHERE phone = ? AND status = 1', [userInfo.phone]);
+    const [minutes_1] = await connection.query('SELECT * FROM minutes_1 WHERE phone = ?', [userInfo.phone]);
+    let total = 0;
+    recharge.forEach((data) => {
+        total += parseFloat(data.money);
+    });
+    // console.log(total)
+    let total2 = 0;
+    minutes_1.forEach((data) => {
+        total2 += parseFloat(data.money);
+    });
+    // console.log(total2)
+    let result = 0;
+    if (total - total2 > 0) result = total - total2;
+    result = Math.max(result, 0);
+    console.log(result)
+    const data = {
+        amount: result, 
+    };
 
+    // Render the template and pass the data
+    return res.render("wallet/withdrawal.ejs", data);
+}
 const withdrawalrecordPage = async (req, res) => {
     return res.render("wallet/withdrawalrecord.ejs");
 }

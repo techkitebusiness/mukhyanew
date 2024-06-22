@@ -1652,7 +1652,7 @@ box-shadow: inset 0rem 0rem 1rem 0rem #65006100;
 
 .login__container-heading[data-v-4b845b3c] {
     min-height: 2.66667rem;
-    background: linear-gradient(90deg,#ce0204 0%, #ff4f4b 100%);
+    background: linear-gradient(90deg,#ff9801 0%,#e67401 100%);
     box-shadow: inset 0rem 0rem 1rem 0rem #65006200;
 }
 
@@ -3624,7 +3624,7 @@ textarea {
     transform: translate(-50%);
     -webkit-user-select: none;
     user-select: none;
-    background: linear-gradient(90deg, #ce0204 0%, #ff4f4b 100%) !important;
+    background: linear-gradient(90deg, #ff9801 0%, #e67401 100%) !important;
    
     z-index: 100
 }

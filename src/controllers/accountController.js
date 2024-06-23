@@ -110,7 +110,9 @@ const register = async (req, res) => {
     let code = randomString(5) + randomNumber(10000, 99999);
     let ip = ipAddress(req);
     let time = timeCreate();
-
+    let joiningBonusStr = process.env.JOINING_BONUS; // Read environment variable as string
+    // Convert the string value to an integer
+    let joiningBonus = parseInt(joiningBonusStr);
     if (!username || !pwd || !invitecode) {
         return res.status(200).json({
             message: 'ERROR!!!',
@@ -145,7 +147,7 @@ const register = async (req, res) => {
                         ctv = check_i[0].ctv;
                     }
                     const sql = "INSERT INTO users SET id_user = ?,phone = ?,name_user = ?,password = ?, plain_password = ?, money = ?,code = ?,invite = ?,ctv = ?,veri = ?,otp = ?,ip_address = ?,status = ?,time = ?";
-                    await connection.execute(sql, [id_user, username, name_user, md5(pwd), pwd, 0, code, invitecode, ctv, 1, otp2, ip, 1, time]);
+                    await connection.execute(sql, [id_user, username, name_user, md5(pwd), pwd, joiningBonus, code, invitecode, ctv, 1, otp2, ip, 1, time]);
                     await connection.execute('INSERT INTO point_list SET phone = ?', [username]);
 
                     let [check_code] = await connection.query('SELECT * FROM users WHERE invite = ? ', [invitecode]);
